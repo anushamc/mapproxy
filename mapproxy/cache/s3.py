@@ -12,7 +12,7 @@ try:
 except ImportError:
     boto = None
 
-from io import StringIO
+from io import StringIO, BytesIO
 from mapproxy.util import async
 from threading import Timer
 
@@ -79,7 +79,7 @@ class S3Cache(FileCache):
         location = self.tile_location(tile)
         log.debug('load_tile, location: %s' % location)
 
-        tile_data = StringIO()
+        tile_data = BytesIO()
         k = boto.s3.key.Key(self.bucket)
         k.key = location
         try:
