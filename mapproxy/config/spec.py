@@ -100,6 +100,13 @@ cache_types = {
         'directory': str(),
         'tile_lock_dir': str(),
     },
+    's3': {
+        'bucket': str(),
+        'directory_layout': str(),
+        'use_grid_names': bool(),
+        'aws_access_key': str(),
+        'aws_secret_key': str(),
+    },
     'sqlite': {
         'directory': str(),
         'tile_lock_dir': str(),

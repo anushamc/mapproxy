@@ -953,6 +953,26 @@ class CacheConfiguration(ConfigurationBase):
             link_single_color_images=link_single_color_images,
         )
 
+    def _s3_cache(self, grid_conf, file_ext):
+        from mapproxy.cache.s3 import S3Cache
+        
+        cache_dir = ''
+        bucket = self.conf.get('cache', {}).get('bucket', 'mapproxy')
+        directory_layout = self.conf.get('cache', {}).get('directory_layout', 'tc')
+        aws_access_key = self.conf.get('cache', {}).get('aws_access_key', None)
+        aws_secret_key = self.conf.get('cache', {}).get('aws_secret_key', None)
+        bucket = self.conf.get('cache', {}).get('bucket', 'mapproxy')
+        if self.conf.get('cache', {}).get('use_grid_names'):
+            cache_dir = os.path.join(cache_dir, self.conf['name'], grid_conf.tile_grid().name)
+        else:
+            suffix = grid_conf.conf['srs'].replace(':', '')
+            cache_dir = os.path.join(cache_dir, self.conf['name'] + '_' + suffix)
+        
+        lock_timeout = self.context.globals.get_value('http.client_timeout', {})
+        
+        return S3Cache(cache_dir, file_ext=file_ext, directory_layout=directory_layout,
+            lock_timeout=lock_timeout, bucket=bucket, aws_access_key=aws_access_key, aws_secret_key=aws_secret_key)
+
     def _mbtiles_cache(self, grid_conf, file_ext):
         from mapproxy.cache.mbtiles import MBTilesCache
 
