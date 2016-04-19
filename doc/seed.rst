@@ -67,9 +67,20 @@ Options
 
   Filename where MapProxy stores the seeding progress for the ``--continue`` option. Defaults to ``.mapproxy_seed_progress`` in the current working directory. MapProxy will remove that file after a successful seed.
 
+.. option:: --use-cache-lock
+
+  Lock each cache to prevent multiple parallel `mapproxy-seed` calls to work on the same cache.
+  It does not lock normal operation of MapProxy.
+
+.. option:: --log-config
+
+  The logging configuration file to use.
 
 .. versionadded:: 1.5.0
   ``--continue`` and ``--progress-file`` option
+
+.. versionadded:: 1.7.0
+  ``--log-config`` option
 
 
 Examples
@@ -174,7 +185,7 @@ Examples::
   levels:
     to: 10
 
-  # seed from level 3 to 6 (including level 10)
+  # seed from level 3 to 6 (including level 3 and 6)
   levels:
     from: 3
     to: 6
@@ -267,7 +278,7 @@ Examples::
   levels:
     to: 10
 
-  # cleanup from level 3 to 6 (including level 10)
+  # cleanup from level 3 to 6 (including level 3 and 6)
   levels:
     from: 3
     to: 6

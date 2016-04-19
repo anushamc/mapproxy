@@ -123,7 +123,7 @@ A list with SRSs that the WMS source supports. MapProxy will only query the sour
 
 You don't need to configure this if you only use this WMS as a cache source and the WMS supports all SRS of the cache.
 
-If MapProxy needs to reproject and the source has multiple ``supported_srs``, then it will use the fist projected SRS for requests in projected SRS, or the fist geographic SRS for requests in geographic SRS. E.g when `supported_srs` is ``['EPSG:4326', 'EPSG:31467']`` caches with EPSG:900913 will use EPSG:32467.
+If MapProxy needs to reproject and the source has multiple ``supported_srs``, then it will use the first projected SRS for requests in a projected SRS, or the first geographic SRS for requests in a geographic SRS. E.g when `supported_srs` is ``['EPSG:4326', 'EPSG:31467']`` caches with EPSG:3857 (projected, meter) will use EPSG:31467 (projected, meter) and not EPSG:4326 (geographic, lat/long).
 
   ..  .. note:: For the configuration of SRS for MapProxy see `srs_configuration`_.
 
@@ -459,7 +459,13 @@ Use Mapnik 2 if set to ``true``. This option is now deprecated and only required
 
 Set to ``true`` to render from mapnik sources with background-color="transparent", ``false`` (default) will force a black background color.
 
+``scale_factor``
+^^^^^^^^^^^^^^^^
 
+.. versionadded:: 1.8.0
+
+Set the `Mapnik scale_factor <https://github.com/mapnik/mapnik/wiki/Scale-factor>`_ option. Mapnik scales most style options like the width of lines and font sizes by this factor.
+See also :ref:`hq_tiles`.
 
 Other options
 ^^^^^^^^^^^^^

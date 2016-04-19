@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0"?>
 <Capabilities xmlns="http://www.opengis.net/wmts/1.0" xmlns:ows="http://www.opengis.net/ows/1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:gml="http://www.opengis.net/gml" xsi:schemaLocation="http://www.opengis.net/wmts/1.0   ../wmtsGetCapabilities_response.xsd" version="1.0.0">
   <ows:ServiceIdentification>
     <ows:Title>{{service.title}}</ows:Title>
@@ -68,19 +68,19 @@
       <ows:Title>{{layer.title}}</ows:Title>
       <ows:Abstract></ows:Abstract>
       <ows:WGS84BoundingBox>
-        <ows:LowerCorner>{{layer.extent.llbbox[0]}} {{layer.extent.llbbox[1]}}</ows:LowerCorner>
-        <ows:UpperCorner>{{layer.extent.llbbox[2]}} {{layer.extent.llbbox[3]}}</ows:UpperCorner>
+        <ows:LowerCorner>{{layer.md['extent'].llbbox[0]}} {{layer.md['extent'].llbbox[1]}}</ows:LowerCorner>
+        <ows:UpperCorner>{{layer.md['extent'].llbbox[2]}} {{layer.md['extent'].llbbox[3]}}</ows:UpperCorner>
       </ows:WGS84BoundingBox>
       <ows:Identifier>{{layer.name}}</ows:Identifier>
       <Style>
         <ows:Identifier>default</ows:Identifier>
       </Style>
       <Format>image/{{layer.format}}</Format>
-      {{for dimension, values in layer.dimensions.iteritems()}}
+      {{for dimension in layer.dimensions}}
       <Dimension>
         <ows:Identifier>{{ dimension_keys[dimension] }}</ows:Identifier>
-        <Default>{{ values.default }}</Default>
-        {{for value in values}}
+        <Default>{{ layer.dimensions[dimension].default }}</Default>
+        {{for value in layer.dimensions[dimension]}}
         <Value>{{ value }}</Value>
         {{endfor}}
       </Dimension>
@@ -104,7 +104,7 @@
       <TileMatrix>
         <ows:Identifier>{{matrix.identifier}}</ows:Identifier>
         <ScaleDenominator>{{matrix.scale_denom}}</ScaleDenominator>
-        <TopLeftCorner>{{matrix.bbox[0]}} {{matrix.bbox[3]}}</TopLeftCorner>
+        <TopLeftCorner>{{matrix.topleft[0]}} {{matrix.topleft[1]}}</TopLeftCorner>
         <TileWidth>{{matrix.tile_size[0]}}</TileWidth>
         <TileHeight>{{matrix.tile_size[1]}}</TileHeight>
         <MatrixWidth>{{matrix.grid_size[0]}}</MatrixWidth>

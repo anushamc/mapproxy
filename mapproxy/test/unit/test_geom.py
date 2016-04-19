@@ -30,13 +30,14 @@ from mapproxy.test.helper import TempFile
 if not geom_support:
     from nose.plugins.skip import SkipTest
     raise SkipTest('requires Shapely')
+from mapproxy.util.coverage import BBOXCoverage
 
 import shapely
 import shapely.prepared
 
 from nose.tools import eq_, raises
 
-VALID_POLYGON1 = """POLYGON ((953296.704552185838111 7265916.626927595585585,
+VALID_POLYGON1 = b"""POLYGON ((953296.704552185838111 7265916.626927595585585,
 944916.907243740395643 7266183.505430161952972,
 943803.712335807620548 7266450.200959664769471,
 935361.798751499853097 7269866.750814219936728,
@@ -57,9 +58,9 @@ VALID_POLYGON1 = """POLYGON ((953296.704552185838111 7265916.626927595585585,
 956790.912048695725389 7272483.464432151056826,
 954255.388006897410378 7266929.622660100460052,
 953760.684189812047407 7266129.1298723295331,
-953296.704552185838111 7265916.626927595585585))""".replace('\n',' ')
+953296.704552185838111 7265916.626927595585585))""".replace(b'\n', b' ')
 
-VALID_POLYGON2 = """POLYGON ((929919.722805089084432 7252212.673410807736218,
+VALID_POLYGON2 = b"""POLYGON ((929919.722805089084432 7252212.673410807736218,
 929393.960850072442554 7252372.056830812245607,
 928651.905124444281682 7252957.449742536991835,
 927507.763398071052507 7254289.325379111804068,
@@ -76,44 +77,63 @@ VALID_POLYGON2 = """POLYGON ((929919.722805089084432 7252212.673410807736218,
 935083.722663498250768 7255089.941797585226595,
 931527.621530107106082 7252531.635323006659746,
 931125.535529361688532 7252317.969672014936805,
-929919.722805089084432 7252212.673410807736218))""".replace('\n',' ')
+929919.722805089084432 7252212.673410807736218))""".replace(b'\n', b' ')
 
+INTERSECTING_POLYGONS = """POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))
+POLYGON ((5 0, 15 0, 15 10, 5 10, 5 0))
+"""
 
 class TestPolygonLoading(object):
     def test_loading_polygon(self):
         with TempFile() as fname:
-            with open(fname, 'w') as f:
+            with open(fname, 'wb') as f:
                 f.write(VALID_POLYGON1)
             polygon = load_polygons(fname)
             bbox, polygon = build_multipolygon(polygon, simplify=True)
+            assert polygon.is_valid
             eq_(polygon.type, 'Polygon')
 
     def test_loading_multipolygon(self):
         with TempFile() as fname:
-            with open(fname, 'w') as f:
+            with open(fname, 'wb') as f:
                 f.write(VALID_POLYGON1)
-                f.write('\n')
+                f.write(b'\n')
                 f.write(VALID_POLYGON2)
             polygon = load_polygons(fname)
             bbox, polygon = build_multipolygon(polygon, simplify=True)
+            assert polygon.is_valid
             eq_(polygon.type, 'MultiPolygon')
 
     @raises(shapely.geos.ReadingError)
     def test_loading_broken(self):
         with TempFile() as fname:
-            with open(fname, 'w') as f:
-                f.write("POLYGON((")
+            with open(fname, 'wb') as f:
+                f.write(b"POLYGON((")
             polygon = load_polygons(fname)
+            assert polygon.is_valid
             bbox, polygon = build_multipolygon(polygon, simplify=True)
 
     def test_loading_skip_non_polygon(self):
         with TempFile() as fname:
-            with open(fname, 'w') as f:
-                f.write("POINT(0 0)\n")
+            with open(fname, 'wb') as f:
+                f.write(b"POINT(0 0)\n")
                 f.write(VALID_POLYGON1)
             polygon = load_polygons(fname)
             bbox, polygon = build_multipolygon(polygon, simplify=True)
+            assert polygon.is_valid
             eq_(polygon.type, 'Polygon')
+
+    def test_loading_intersecting_polygons(self):
+        # check that the self intersection is eliminated
+        # otherwise the geometry will be invalid
+        with TempFile() as fname:
+            with open(fname, 'w') as f:
+                f.write(INTERSECTING_POLYGONS)
+            polygon = load_polygons(fname)
+            bbox, polygon = build_multipolygon(polygon, simplify=True)
+            assert polygon.is_valid
+            eq_(polygon.type, 'Polygon')
+            assert polygon.equals(shapely.geometry.Polygon([(0, 0), (15, 0), (15, 10), (0, 10)]))
 
 class TestTransform(object):
     def test_polygon_transf(self):
@@ -181,7 +201,7 @@ class TestGeomCoverage(object):
     def test_prepared(self):
         assert hasattr(self.coverage, '_prepared_max')
         self.coverage._prepared_max = 100
-        for i in xrange(110):
+        for i in range(110):
             assert self.coverage.intersects((-30, 10, -8, 70), SRS(4326))
 
     def test_eq(self):
@@ -193,7 +213,6 @@ class TestGeomCoverage(object):
         assert coverage(g1, SRS(4326)) == coverage(g3, SRS(4326))
         g4 = shapely.wkt.loads("POLYGON((10 10, 10.1 50, -10 60, 10 80, 80 80, 80 10, 10 10))")
         assert coverage(g1, SRS(4326)) != coverage(g4, SRS(4326))
-
 
 class TestBBOXCoverage(object):
     def setup(self):
@@ -220,6 +239,24 @@ class TestBBOXCoverage(object):
 
         assert not self.coverage.intersects((0, 0, 1000, 1000), SRS(900913))
         assert self.coverage.intersects((0, 0, 1500000, 1500000), SRS(900913))
+
+    def test_intersection(self):
+        eq_(self.coverage.intersection((15, 15, 20, 20), SRS(4326)),
+            BBOXCoverage((15, 15, 20, 20), SRS(4326)))
+        eq_(self.coverage.intersection((15, 15, 80, 20), SRS(4326)),
+            BBOXCoverage((15, 15, 80, 20), SRS(4326)))
+        eq_(self.coverage.intersection((9, 10, 20, 20), SRS(4326)),
+            BBOXCoverage((9, 10, 20, 20), SRS(4326)))
+        eq_(self.coverage.intersection((-30, 10, -8, 70), SRS(4326)),
+            BBOXCoverage((-10, 10, -8, 70), SRS(4326)))
+        eq_(self.coverage.intersection((-30, 10, -11, 70), SRS(4326)),
+            None)
+        eq_(self.coverage.intersection((0, 0, 1000, 1000), SRS(900913)),
+            None)
+        assert bbox_equals(
+            self.coverage.intersection((0, 0, 1500000, 1500000), SRS(900913)).bbox,
+            (0.0, 10, 13.47472926179282, 13.352207626707813)
+        )
 
     def test_eq(self):
         assert coverage([-10, 10, 80, 80], SRS(4326)) == coverage([-10, 10, 80, 80], SRS(4326))

@@ -29,7 +29,7 @@ You need to add the service to the ``services`` section of your MapProxy configu
 Web Map Service (OGC WMS)
 -------------------------
 
-The WMS server is accessible at ``/service`` and it supports the WMS versions 1.0.0, 1.1.1 and 1.3.0.
+The WMS server is accessible at ``/service``, ``/ows`` and ``/wms``  and it supports the WMS versions 1.0.0, 1.1.1 and 1.3.0.
 
 The WMS service will use all configured :ref:`layers <layers>`.
 
@@ -49,6 +49,7 @@ Adds an attribution (copyright) line to all WMS requests.
 """"""
 ``md`` is for metadata. These fields are used for the WMS ``GetCapabilities`` responses. See the example below for all supported keys.
 
+.. _wms_srs:
 
 ``srs``
 """""""
@@ -68,6 +69,33 @@ The ``bbox_srs`` option controls in which SRS the BBOX is advertised in the capa
 
 You need to make sure that all layer extents are valid for these SRS. E.g. you can't choose a local SRS like UTM if you're using a global grid without limiting all sources with a ``coverage``.
 
+For example, a config with::
+
+  services:
+    wms:
+      srs: ['EPSG:4326', 'EPSG:3857', 'EPSG:31467']
+      bbox_srs: ['EPSG:4326', 'EPSG:3857', 'EPSG:31467']
+
+will show the bbox in the capabilities in EPSG:4326, EPSG:3857 and EPSG:31467.
+
+.. versionadded:: 1.7.0
+
+    You can also define an explicit bbox for specific SRS. This bbox will overwrite all layer extents for that SRS.
+
+The following example will show the actual bbox of each layer in EPSG:4326 and EPSG:3857, but always the specified bbox for EPSG:31467::
+
+  services:
+    wms:
+      srs: ['EPSG:4326', 'EPSG:3857', 'EPSG:31467']
+      bbox_srs:
+        - 'EPSG:4326'
+        - 'EPSG:3857'
+        - srs: 'EPSG:31467'
+          bbox: [2750000, 5000000, 4250000, 6500000]
+
+You can use this to offer global datasets with SRS that are only valid in a local region, like UTM zones.
+
+.. _wms_image_formats:
 
 ``image_formats``
 """""""""""""""""
@@ -110,6 +138,14 @@ Configure what MapProxy should do when one or more sources return errors or no r
 
 The maximum output size for a WMS requests in pixel. MapProxy returns an WMS exception in XML format for requests that are larger. Defaults to ``[4000, 4000]`` which will limit the maximum output size to 16 million pixels (i.e. 5000x3000 is still allowed).
 
+See also :ref:`globals.cache.max_tile_limit <max_tile_limit>` for the maximum number of tiles MapProxy will merge together for each layer.
+
+``versions``
+""""""""""""
+
+.. versionadded:: 1.7.0
+
+A list of WMS version numbers that MapProxy should support. Defaults to ``['1.0.0', '1.1.0', '1.1.1', '1.3.0']``.
 
 Full example
 """"""""""""
@@ -118,6 +154,7 @@ Full example
   services:
     wms:
       srs: ['EPSG:4326', 'CRS:83', 'EPSG:900913']
+      versions: ['1.1.1']
       image_formats: ['image/png', 'image/jpeg']
       attribution:
         text: "© MyCompany"
@@ -278,7 +315,7 @@ KVP
 """
 
 MapProxy supports ``GetCapabilities`` and ``GetTile`` KVP requests.
-The KVP service is available at ``/service``.
+The KVP service is available at ``/service`` and ``/ows``.
 
 You can enable or disable the KVP service with the ``kvp`` option. It is enabled by default and you need to enable ``restful`` if you disable this one.
 

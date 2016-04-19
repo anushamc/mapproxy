@@ -15,12 +15,14 @@ MapProxy Documentation
    seed
    coverages
    mapproxy_util
+   mapproxy_util_autoconfig
    deployment
    configuration_examples
    labeling
    auth
    decorate_img
    development
+   mapproxy_2
 
 .. todolist::
 

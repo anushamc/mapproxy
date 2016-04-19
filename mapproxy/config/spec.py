@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import print_function
+
 from mapproxy.util.ext.dictspec.validator import validate, ValidationError
 from mapproxy.util.ext.dictspec.spec import one_of, anything, number
 from mapproxy.util.ext.dictspec.spec import recursive, required, type_spec, combined
-
+from mapproxy.compat import string_type
 
 def validate_mapproxy_conf(conf_dict):
     """
@@ -25,7 +27,7 @@ def validate_mapproxy_conf(conf_dict):
     """
     try:
         validate(mapproxy_yaml_spec, conf_dict)
-    except ValidationError, ex:
+    except ValidationError as ex:
         return ex.errors, ex.informal_only
     else:
         return [], True
@@ -85,12 +87,25 @@ source_commons = combined(
     }
 )
 
+riak_node = {
+    'host': str(),
+    'pb_port': number(),
+    'http_port': number(),
+}
+
 cache_types = {
     'file': {
         'directory_layout': str(),
         'use_grid_names': bool(),
         'directory': str(),
         'tile_lock_dir': str(),
+    },
+    's3': {
+        'bucket': str(),
+        'directory_layout': str(),
+        'use_grid_names': bool(),
+        'aws_access_key': str(),
+        'aws_secret_key': str(),
     },
     'sqlite': {
         'directory': str(),
@@ -110,9 +125,13 @@ cache_types = {
         'tile_lock_dir': str(),
     },
     'riak': {
-        'url': str(),
+        'nodes': [riak_node],
+        'protocol': one_of('pbc', 'http', 'https'),
         'bucket': str(),
-        'prefix': str(),
+        'default_ports': {
+            'pb': number(),
+            'http': number(),
+        },
         'secondary_index': bool(),
     }
 }
@@ -125,28 +144,28 @@ on_error = {
 }
 
 wms_130_layer_md = {
-    'abstract': basestring,
+    'abstract': string_type,
     'keyword_list': [
         {
-            'vocabulary': basestring,
-            'keywords': [basestring],
+            'vocabulary': string_type,
+            'keywords': [string_type],
         }
     ],
     'attribution': {
-        'title': basestring,
+        'title': string_type,
         'url':    str,
         'logo': {
             'url':    str,
             'width':  int,
             'height': int,
-            'format': basestring,
+            'format': string_type,
        }
     },
     'identifier': [
         {
             'url': str,
-            'name': basestring,
-            'value': basestring,
+            'name': string_type,
+            'value': string_type,
         }
     ],
     'metadata': [
@@ -191,15 +210,16 @@ grid_opts = {
 }
 
 ogc_service_md = {
-    'title': basestring,
-    'abstract': basestring,
-    'online_resource': basestring,
+    'title': string_type,
+    'abstract': string_type,
+    'online_resource': string_type,
     'contact': anything(),
-    'fees': basestring,
-    'access_constraints': basestring,
+    'fees': string_type,
+    'access_constraints': string_type,
 }
 
 mapproxy_yaml_spec = {
+    '__config_files__': anything(), # only used internaly
     'globals': {
         'image': {
             'resampling_method': 'method',
@@ -213,7 +233,12 @@ mapproxy_yaml_spec = {
             'font_dir': str(),
             'merge_method': str(),
         },
-        'http': http_opts,
+        'http': combined(
+            http_opts,
+            {
+                'access_control_allow_origin': one_of(str(), {}),
+            }
+        ),
         'cache': {
             'base_dir': str(),
             'lock_dir': str(),
@@ -223,6 +248,7 @@ mapproxy_yaml_spec = {
             'max_tile_limit': number(),
             'minimize_meta_requests': bool(),
             'concurrent_tile_creators': int(),
+            'link_single_color_images': bool(),
         },
         'grid': {
             'tile_size': [int()],
@@ -245,7 +271,7 @@ mapproxy_yaml_spec = {
     },
     'caches': {
         anything(): {
-            required('sources'): [str()],
+            required('sources'): [string_type],
             'name': str(),
             'grids': [str()],
             'cache_dir': str(),
@@ -261,7 +287,7 @@ mapproxy_yaml_spec = {
             'use_direct_from_res': number(),
             'link_single_color_images': bool(),
             'watermark': {
-                'text': basestring,
+                'text': string_type,
                 'font_size': number(),
                 'color': one_of(str(), [number()]),
                 'opacity': number(),
@@ -287,10 +313,10 @@ mapproxy_yaml_spec = {
         },
         'wms': {
             'srs': [str()],
-            'bbox_srs': [str()],
+            'bbox_srs': [one_of(str(), {'bbox': [number()], 'srs': str()})],
             'image_formats': [str()],
             'attribution': {
-                'text': basestring,
+                'text': string_type,
             },
             'featureinfo_types': [str()],
             'featureinfo_xslt': {
@@ -300,6 +326,7 @@ mapproxy_yaml_spec = {
             'max_output_pixels': one_of(number(), [number()]),
             'strict': bool(),
             'md': ogc_service_md,
+            'versions': [str()],
         },
     },
 
@@ -369,6 +396,7 @@ mapproxy_yaml_spec = {
                 'image': image_opts,
                 'layers': one_of(str(), [str()]),
                 'use_mapnik2': bool(),
+                'scale_factor': number(),
             }),
             'debug': {
             },
@@ -378,23 +406,23 @@ mapproxy_yaml_spec = {
     'layers': one_of(
         {
             anything(): combined(scale_hints, {
-                'sources': [str()],
-                required('title'): basestring,
+                'sources': [string_type],
+                required('title'): string_type,
                 'legendurl': str(),
                 'md': wms_130_layer_md,
             })
         },
         recursive([combined(scale_hints, {
-            'sources': [str()],
+            'sources': [string_type],
             'name': str(),
-            required('title'): basestring,
+            required('title'): string_type,
             'legendurl': str(),
             'layers': recursive(),
             'md': wms_130_layer_md,
             'dimensions': {
                 anything(): {
-                    required('values'): [one_of(basestring, float, int)],
-                    'default': one_of(basestring, float, int),
+                    required('values'): [one_of(string_type, float, int)],
+                    'default': one_of(string_type, float, int),
                 }
             }
         })])
@@ -411,6 +439,6 @@ if __name__ == '__main__':
         data = yaml.load(open(f))
         try:
             validate(mapproxy_yaml_spec, data)
-        except ValidationError, ex:
+        except ValidationError as ex:
             for err in ex.errors:
-                print '%s: %s' % (f, err)
+                print('%s: %s' % (f, err))

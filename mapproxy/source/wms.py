@@ -66,7 +66,7 @@ class WMSSource(MapLayer):
             resp.opacity = self.opacity
             return resp
 
-        except HTTPClientError, e:
+        except HTTPClientError as e:
             log.warn('could not retrieve WMS map: %s', e)
             reraise_exception(SourceError(e.args[0]), sys.exc_info())
 
@@ -155,9 +155,6 @@ class WMSSource(MapLayer):
         if self.transparent_color_tolerance != other.transparent_color_tolerance:
             return False
 
-        if self.res_range != other.res_range:
-            return False
-
         if self.coverage != other.coverage:
             return False
 
@@ -179,7 +176,10 @@ class WMSSource(MapLayer):
         return WMSSource(client, image_opts=self.image_opts,
             transparent_color=self.transparent_color,
             transparent_color_tolerance=self.transparent_color_tolerance,
-            res_range=self.res_range, coverage=self.coverage,
+            supported_srs=self.supported_srs,
+            supported_formats=self.supported_formats,
+            res_range=None, # layer outside res_range should already be filtered out
+            coverage=self.coverage,
             fwd_req_params=self.fwd_req_params,
         )
 
@@ -223,10 +223,10 @@ class WMSLegendSource(LegendSource):
             for client in self.clients:
                 try:
                     legends.append(client.get_legend(query))
-                except HTTPClientError, e:
+                except HTTPClientError as e:
                     error_occured = True
                     log.error(e.args[0])
-                except SourceError, e:
+                except SourceError as e:
                     error_occured = True
                     # TODO errors?
                     log.error(e.args[0])

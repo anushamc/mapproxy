@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?xml version="1.0"?>
 <!DOCTYPE WMT_MS_Capabilities SYSTEM "http://schemas.opengis.net/wms/1.0.0/WMS_MS_Capabilities.dtd"
  [
  <!ELEMENT VendorSpecificCapabilities EMPTY>
@@ -8,7 +8,11 @@
   <Name>OGC:WMS</Name>
   <Title>{{service.title}}</Title>
   <Abstract>{{service.abstract}}</Abstract>
+{{if service.online_resource}}
   <OnlineResource>{{service.online_resource}}</OnlineResource>
+{{else}}
+  <OnlineResource>{{service.url}}</OnlineResource>
+{{endif}}
   <Fees>{{service.get('fees', 'none')}}</Fees>
   <AccessConstraints>{{service.get('access_constraints', 'none')}}</AccessConstraints>
 </Service>
@@ -74,7 +78,7 @@
     {{for srs_code, bbox in layer_srs_bbox(layer)}}
     <BoundingBox SRS="{{srs_code}}" minx="{{ bbox[0] }}" miny="{{ bbox[1] }}" maxx="{{ bbox[2] }}" maxy="{{ bbox[3] }}" />
     {{endfor}}
-{{if layer.is_active and layer.has_legend}}
+{{if layer.is_active and layer.has_legend and layer.legend_url}}
     <Style>
       <Name>default</Name>
       <Title>default</Title>

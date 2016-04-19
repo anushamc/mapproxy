@@ -16,7 +16,7 @@
 server = ['wms', 'tms', 'kml']
 
 wms = dict(
-    image_formats = ['image/jpeg', 'image/png', 'image/gif', 'image/GeoTIFF', 'image/tiff'],
+    image_formats = ['image/png', 'image/jpeg', 'image/gif', 'image/GeoTIFF', 'image/tiff'],
     srs = set(['EPSG:4326', 'EPSG:4258', 'CRS:84', 'EPSG:900913', 'EPSG:3857']),
     strict = False,
     request_parser = 'default',
@@ -62,6 +62,7 @@ cache = dict(
     meta_size = (4, 4),
     meta_buffer = 80,
     minimize_meta_requests = False,
+    link_single_color_images = False,
 )
 
 grid = dict(
@@ -78,4 +79,5 @@ http = dict(
     client_timeout = 60,
     concurrent_requests = 0,
     method = 'AUTO',
+    access_control_allow_origin = '*',
 )

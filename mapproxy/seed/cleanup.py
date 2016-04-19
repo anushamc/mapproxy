@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import print_function
+
 import os
 from mapproxy.seed.util import format_cleanup_task
 from mapproxy.util.fs import cleanup_directory
@@ -21,7 +23,10 @@ from mapproxy.seed.seeder import TileWorkerPool, TileWalker, TileCleanupWorker
 def cleanup(tasks, concurrency=2, dry_run=False, skip_geoms_for_last_levels=0,
                verbose=True, progress_logger=None):
     for task in tasks:
-        print format_cleanup_task(task)
+        print(format_cleanup_task(task))
+
+        if task.coverage is False:
+            continue
 
         if task.complete_extent:
             if hasattr(task.tile_manager.cache, 'level_location'):
@@ -43,7 +48,7 @@ def simple_cleanup(task, dry_run, progress_logger=None):
         level_dir = task.tile_manager.cache.level_location(level)
         if dry_run:
             def file_handler(filename):
-                print 'removing ' + filename
+                print('removing ' + filename)
         else:
             file_handler = None
         if progress_logger:
@@ -82,7 +87,12 @@ def tilewalker_cleanup(task, dry_run, concurrency, skip_geoms_for_last_levels,
     tile_worker_pool = TileWorkerPool(task, TileCleanupWorker, progress_logger=progress_logger,
                                       dry_run=dry_run, size=concurrency)
     tile_walker = TileWalker(task, tile_worker_pool, handle_stale=True,
-                             work_on_metatiles=False,
+                             work_on_metatiles=False, progress_logger=progress_logger,
                              skip_geoms_for_last_levels=skip_geoms_for_last_levels)
-    tile_walker.walk()
-    tile_worker_pool.stop()
+    try:
+        tile_walker.walk()
+    except KeyboardInterrupt:
+        tile_worker_pool.stop(force=True)
+        raise
+    finally:
+        tile_worker_pool.stop()

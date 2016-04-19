@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import with_statement
+from __future__ import print_function
+
+import io
 import os
 import optparse
 import re
@@ -22,11 +24,14 @@ import sys
 import textwrap
 import logging
 
+from mapproxy.compat import iteritems
 from mapproxy.version import version
 from mapproxy.script.scales import scales_command
 from mapproxy.script.wms_capabilities import wms_capabilities_command
 from mapproxy.script.grids import grids_command
 from mapproxy.script.export import export_command
+from mapproxy.script.conf.app import config_command
+
 
 
 def setup_logging(level=logging.INFO):
@@ -44,6 +49,50 @@ def serve_develop_command(args):
     parser = optparse.OptionParser("usage: %prog serve-develop [options] mapproxy.yaml")
     parser.add_option("-b", "--bind",
                       dest="address", default='127.0.0.1:8080',
+                      help="Server socket [127.0.0.1:8080]. Use 0.0.0.0 for external access. :1234 to change port.")
+    parser.add_option("--debug", default=False, action='store_true',
+                      dest="debug",
+                      help="Enable debug mode")
+    options, args = parser.parse_args(args)
+
+    if len(args) != 2:
+        parser.print_help()
+        print("\nERROR: MapProxy configuration required.")
+        sys.exit(1)
+
+    mapproxy_conf = args[1]
+
+    host, port = parse_bind_address(options.address)
+
+    if options.debug and host not in ('localhost', '127.0.0.1'):
+        print(textwrap.dedent("""\
+        ################# WARNING! ##################
+        Running debug mode with non-localhost address
+        is a serious security vulnerability.
+        #############################################\
+        """))
+
+
+    if options.debug:
+        setup_logging(level=logging.DEBUG)
+    else:
+        setup_logging()
+    from mapproxy.wsgiapp import make_wsgi_app
+    from mapproxy.config.loader import ConfigurationError
+    from mapproxy.util.ext.serving import run_simple
+    try:
+        app = make_wsgi_app(mapproxy_conf, debug=options.debug)
+    except ConfigurationError:
+        sys.exit(2)
+
+    run_simple(host, port, app, use_reloader=True, processes=1,
+        threaded=True, passthrough_errors=True,
+        extra_files=app.config_files.keys())
+
+def serve_multiapp_develop_command(args):
+    parser = optparse.OptionParser("usage: %prog serve-multiapp-develop [options] projects/")
+    parser.add_option("-b", "--bind",
+                      dest="address", default='127.0.0.1:8080',
                       help="Server socket [127.0.0.1:8080]")
     parser.add_option("--debug", default=False, action='store_true',
                       dest="debug",
@@ -52,55 +101,25 @@ def serve_develop_command(args):
 
     if len(args) != 2:
         parser.print_help()
-        print "\nERROR: MapProxy configuration required."
-        sys.exit(1)
-
-    mapproxy_conf = args[1]
-
-    host, port = parse_bind_address(options.address)
-
-    if options.debug and host not in ('localhost', '127.0.0.1'):
-        print textwrap.dedent("""\
-        ################# WARNING! ##################
-        Running debug mode with non-localhost address
-        is a serious security vulnerability.
-        #############################################\
-        """)
-
-
-    setup_logging()
-    from mapproxy.wsgiapp import make_wsgi_app
-    from mapproxy.config.loader import ConfigurationError
-    from mapproxy.util.ext.serving import run_simple
-    try:
-        app = make_wsgi_app(mapproxy_conf, debug=options.debug)
-    except ConfigurationError, ex:
-        sys.exit(2)
-
-    run_simple(host, port, app, use_reloader=True, processes=1,
-        threaded=True, passthrough_errors=True,
-        extra_files=[mapproxy_conf])
-
-def serve_multiapp_develop_command(args):
-    parser = optparse.OptionParser("usage: %prog serve-multiapp-develop [options] projects/")
-    parser.add_option("-b", "--bind",
-                      dest="address", default='127.0.0.1:8080',
-                      help="Server socket [127.0.0.1:8080]")
-    options, args = parser.parse_args(args)
-
-    if len(args) != 2:
-        parser.print_help()
-        print "\nERROR: MapProxy projects directory required."
+        print("\nERROR: MapProxy projects directory required.")
         sys.exit(1)
 
     mapproxy_conf_dir = args[1]
 
     host, port = parse_bind_address(options.address)
 
+    if options.debug and host not in ('localhost', '127.0.0.1'):
+        print(textwrap.dedent("""\
+        ################# WARNING! ##################
+        Running debug mode with non-localhost address
+        is a serious security vulnerability.
+        #############################################\
+        """))
+
     setup_logging()
     from mapproxy.multiapp import make_wsgi_app
     from mapproxy.util.ext.serving import run_simple
-    app = make_wsgi_app(mapproxy_conf_dir)
+    app = make_wsgi_app(mapproxy_conf_dir, debug=options.debug)
 
     run_simple(host, port, app, use_reloader=True, processes=1,
         threaded=True, passthrough_errors=True)
@@ -154,7 +173,7 @@ class CreateCommand(object):
         self.parser = parser
 
     def log_error(self, msg, *args):
-        print >>sys.stderr, 'ERROR:', msg % args
+        print('ERROR:', msg % args, file=sys.stderr)
 
     def run(self):
 
@@ -201,11 +220,11 @@ class CreateCommand(object):
             self.log_error("%s already exists, use --force", app_filename)
             return 1
 
-        print "writing MapProxy app to %s" % (app_filename, )
+        print("writing MapProxy app to %s" % (app_filename, ))
 
         template_dir = self.template_dir()
-        app_template = open(os.path.join(template_dir, 'config.wsgi')).read()
-        with open(app_filename, 'w') as f:
+        app_template = io.open(os.path.join(template_dir, 'config.wsgi'), encoding='utf-8').read()
+        with io.open(app_filename, 'w', encoding='utf-8') as f:
             f.write(app_template % {'mapproxy_conf': mapproxy_conf,
                 'here': os.path.dirname(mapproxy_conf)})
 
@@ -218,13 +237,14 @@ class CreateCommand(object):
 
         template_dir = self.template_dir()
 
-        for filename in ('mapproxy.yaml', 'seed.yaml', 'full_example.yaml'):
+        for filename in ('mapproxy.yaml', 'seed.yaml',
+            'full_example.yaml', 'full_seed_example.yaml'):
             to = os.path.join(outdir, filename)
             from_ = os.path.join(template_dir, filename)
             if os.path.exists(to) and not self.options.force:
                 self.log_error("%s already exists, use --force", to)
                 return 1
-            print "writing %s" % (to, )
+            print("writing %s" % (to, ))
             shutil.copy(from_, to)
 
         return 0
@@ -237,8 +257,8 @@ class CreateCommand(object):
             return 1
 
         template_dir = self.template_dir()
-        log_template = open(os.path.join(template_dir, 'log.ini')).read()
-        with open(log_filename, 'w') as f:
+        log_template = io.open(os.path.join(template_dir, 'log.ini'), encoding='utf-8').read()
+        with io.open(log_filename, 'w', encoding='utf-8') as f:
             f.write(log_template)
 
         return 0
@@ -262,16 +282,20 @@ commands = {
     },
     'wms-capabilities': {
         'func': wms_capabilities_command,
-        'help': 'Display WMS capabilites',
+        'help': 'Display WMS capabilites.',
     },
     'grids': {
         'func': grids_command,
-        'help': 'Display detailed informations for configured grids'
+        'help': 'Display detailed informations for configured grids.'
     },
     'export': {
         'func': export_command,
-        'help': 'Export existing caches'
+        'help': 'Export existing caches.'
     },
+    'autoconfig': {
+        'func': config_command,
+        'help': 'Create config from WMS capabilities.'
+    }
 }
 
 
@@ -306,13 +330,13 @@ def print_items(data, title='Commands'):
     name_len = max(len(name) for name in data)
 
     if title:
-        print >>sys.stdout, '%s:' % (title, )
-    for name, item in data.iteritems():
+        print('%s:' % (title, ), file=sys.stdout)
+    for name, item in iteritems(data):
         help = item.get('help', '')
         name = ('%%-%ds' % name_len) % name
         if help:
             help = '  ' + help
-        print >>sys.stdout, '  %s%s' % (name, help)
+        print('  %s%s' % (name, help), file=sys.stdout)
 
 def main():
     parser = NonStrictOptionParser("usage: %prog COMMAND [options]",
@@ -321,20 +345,20 @@ def main():
 
     if len(args) < 1 or args[0] in ('--help', '-h'):
         parser.print_help()
-        print
+        print()
         print_items(commands)
         sys.exit(1)
 
     if len(args) == 1 and args[0] == '--version':
-        print 'Mapproxy ' + version
+        print('MapProxy ' + version)
         sys.exit(1)
 
     command = args[0]
     if command not in commands:
         parser.print_help()
-        print
+        print()
         print_items(commands)
-        print >>sys.stdout, '\nERROR: unknown command %s' % (command,)
+        print('\nERROR: unknown command %s' % (command,), file=sys.stdout)
         sys.exit(1)
 
     args = sys.argv[0:1] + sys.argv[2:]

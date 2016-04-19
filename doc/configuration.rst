@@ -352,8 +352,11 @@ You need to set the ``request_format`` to ``image/png`` when using ``mixed``-mod
 MapProxy will try to use this format to request new tiles, if it is not set ``format`` is used. This option has no effect if the source does not support that format or the format of the source is set explicitly (see ``suported_format`` or ``format`` for sources).
 
 
+.. _link_single_color_images:
+
 ``link_single_color_images``
 """"""""""""""""""""""""""""
+
 If set to ``true``, MapProxy will not store tiles that only contain a single color as a
 separate file. MapProxy stores these tiles only once and uses symbolic links to this file
 for every occurrence. This can reduce the size of your tile cache if you have larger areas
@@ -773,6 +776,16 @@ Here you can define some options that affect the way MapProxy generates image re
 
   Example: A request in an uncached region requires MapProxy to fetch four meta-tiles. A ``concurrent_tile_creators`` value of two allows MapProxy to make two requests to the source WMS request in parallel. The splitting of the meta tile and the encoding of the new tiles will happen in parallel to.
 
+
+``link_single_color_images``
+  Enables the ``link_single_color_images`` option for all caches if set to ``true``. See :ref:`link_single_color_images`.
+
+.. _max_tile_limit:
+
+``max_tile_limit``
+  Maximum number of tiles MapProxy will merge together for a WMS request. This limit is for each layer and defaults to 500 tiles.
+
+
 ``srs``
 """""""
 
@@ -865,6 +878,12 @@ Add additional HTTP headers to all requests to your sources.
       My-Header: header value
 
 
+``access_control_allow_origin``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. versionadded:: 1.8.0
+
+Sets the ``Access-control-allow-origin`` header to HTTP responses for `Cross-origin resource sharing <http://en.wikipedia.org/wiki/Cross-origin_resource_sharing>`_. This header is required for WebGL or Canvas web clients. Defaults to `*`. Leave empty to disable the header. This option is only available in `globals`.
 
 
 ``tiles``

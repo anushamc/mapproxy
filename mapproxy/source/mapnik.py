@@ -18,7 +18,6 @@ from __future__ import with_statement, absolute_import
 import sys
 import time
 import threading
-from cStringIO import StringIO
 
 from mapproxy.grid import tile_grid
 from mapproxy.image import ImageSource
@@ -28,6 +27,7 @@ from mapproxy.source import  SourceError
 from mapproxy.client.log import log_request
 from mapproxy.util.py import reraise_exception
 from mapproxy.util.async import run_non_blocking
+from mapproxy.compat import BytesIO
 
 try:
     import mapnik
@@ -49,12 +49,13 @@ log = logging.getLogger(__name__)
 class MapnikSource(MapLayer):
     supports_meta_tiles = True
     def __init__(self, mapfile, layers=None, image_opts=None, coverage=None,
-        res_range=None, lock=None, reuse_map_objects=False):
+        res_range=None, lock=None, reuse_map_objects=False, scale_factor=None):
         MapLayer.__init__(self, image_opts=image_opts)
         self.mapfile = mapfile
         self.coverage = coverage
         self.res_range = res_range
         self.layers = set(layers) if layers else None
+        self.scale_factor = scale_factor
         self.lock = lock
         self._map_objs = {}
         self._map_objs_lock = threading.Lock()
@@ -73,7 +74,7 @@ class MapnikSource(MapLayer):
 
         try:
             resp = self.render(query)
-        except RuntimeError, ex:
+        except RuntimeError as ex:
             log.error('could not render Mapnik map: %s', ex)
             reraise_exception(SourceError(ex.args[0]), sys.exc_info())
         resp.opacity = self.opacity
@@ -122,6 +123,7 @@ class MapnikSource(MapLayer):
         m.srs = '+init=%s' % str(query.srs.srs_code.lower())
         envelope = mapnik.Box2d(*query.bbox)
         m.zoom_to_box(envelope)
+        data = None
 
         try:
             if self.layers:
@@ -133,7 +135,10 @@ class MapnikSource(MapLayer):
                         i += 1
 
             img = mapnik.Image(query.size[0], query.size[1])
-            mapnik.render(m, img)
+            if self.scale_factor:
+                mapnik.render(m, img, self.scale_factor)
+            else:
+                mapnik.render(m, img)
             data = img.tostring(str(query.format))
         finally:
             size = None
@@ -142,5 +147,5 @@ class MapnikSource(MapLayer):
             log_request('%s:%s:%s:%s' % (mapfile, query.bbox, query.srs.srs_code, query.size),
                 status='200' if data else '500', size=size, method='API', duration=time.time()-start_time)
 
-        return ImageSource(StringIO(data), size=query.size,
+        return ImageSource(BytesIO(data), size=query.size,
             image_opts=ImageOptions(transparent=self.transparent, format=query.format))

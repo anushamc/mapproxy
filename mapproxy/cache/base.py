@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import os
-import hashlib
+import sys
 import time
 
 from contextlib import contextmanager
@@ -82,26 +82,19 @@ class TileCacheBase(object):
         """
         raise NotImplementedError()
 
+# whether we immediately remove lock files or not
+REMOVE_ON_UNLOCK = True
+if sys.platform == 'win32':
+    # windows does not handle this well
+    REMOVE_ON_UNLOCK = False
 
-class FileBasedLocking(object):
-    """
-    Mixin for file based tile locking.
+class TileLocker(object):
+    def __init__(self, lock_dir, lock_timeout, lock_cache_id):
+        self.lock_dir = lock_dir
+        self.lock_timeout = lock_timeout
+        self.lock_cache_id = lock_cache_id
 
-    Requires the following attributes:
-
-    `lock_cache_id`
-        unique id for this cache, if not present it will be
-        generated from `cache_dir`
-
-    `lock_dir`
-        where the lock files are store
-
-    `lock_timeout`
-        how long to wait for a lock
-    """
     def lock_filename(self, tile):
-        if getattr(self, 'lock_cache_id', None) is None:
-            self.lock_cache_id = hashlib.md5(self.cache_dir).hexdigest()
         return os.path.join(self.lock_dir, self.lock_cache_id + '-' +
                             '-'.join(map(str, tile.coord)) + '.lck')
 
@@ -112,12 +105,7 @@ class FileBasedLocking(object):
         if getattr(self, 'locking_disabled', False):
             return DummyLock()
         lock_filename = self.lock_filename(tile)
-        cleanup_lockdir(self.lock_dir, force=False)
+        cleanup_lockdir(self.lock_dir, max_lock_time=self.lock_timeout + 10,
+            force=False)
         return FileLock(lock_filename, timeout=self.lock_timeout,
-            remove_on_unlock=True)
-
-class TileLocker(FileBasedLocking):
-    def __init__(self, lock_dir, lock_timeout, lock_cache_id):
-        self.lock_dir = lock_dir
-        self.lock_timeout = lock_timeout
-        self.lock_cache_id = lock_cache_id
+            remove_on_unlock=REMOVE_ON_UNLOCK)

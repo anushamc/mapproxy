@@ -16,9 +16,11 @@
 """
 WMS service handler
 """
+from __future__ import print_function
 
 from functools import partial
 
+from mapproxy.compat import iteritems, itervalues, iterkeys
 from mapproxy.request.wmts import (
     wmts_request, make_wmts_rest_request_parser,
     URLTemplateConverter,
@@ -127,7 +129,7 @@ class WMTSServer(Server):
             if result['authorized'] == 'none':
                 raise RequestError('forbidden', status=403)
             allowed_layers = []
-            for layer in self.layers.itervalues():
+            for layer in itervalues(self.layers):
                 if result['layers'].get(layer.name, {}).get('tile', False) == True:
                     allowed_layers.append(layer)
             return allowed_layers
@@ -174,7 +176,7 @@ class WMTSRestServer(WMTSServer):
     def check_request_dimensions(self, tile_layer, request):
         # check that unknown dimension for this layer are set to default
         if request.dimensions:
-            for dimension, value in request.dimensions.iteritems():
+            for dimension, value in iteritems(request.dimensions):
                 dimension = dimension.lower()
                 if dimension not in tile_layer.dimensions and value != 'default':
                     raise RequestError('unknown dimension: ' + str(dimension),
@@ -242,7 +244,7 @@ class WMTSTileLayer(object):
     def __init__(self, layers):
         self.grids = [lyr.grid for lyr in layers.values()]
         self.layers = layers
-        self._layer = layers[layers.keys()[0]]
+        self._layer = layers[next(iterkeys(layers))]
 
     def __getattr__(self, name):
         return getattr(self._layer, name)
@@ -278,16 +280,19 @@ class TileMatrixSet(object):
         for level, res in self.grid.resolutions.iteritems():
             origin = self.grid.origin_tile(level, 'ul')
             bbox = self.grid.tile_bbox(origin)
+            topleft = bbox[0], bbox[3]
+            if self.grid.srs.is_axis_order_ne:
+                topleft = bbox[3], bbox[0]
             grid_size = self.grid.grid_sizes[level]
             scale_denom = res / (0.28 / 1000) * meter_per_unit(self.grid.srs)
             yield bunch(
                 identifier=level,
-                bbox=bbox,
+                topleft=topleft,
                 grid_size=grid_size,
                 scale_denom=scale_denom,
                 tile_size=self.grid.tile_size,
             )
 
 if __name__ == '__main__':
-    print TileMatrixSet(tile_grid(900913)).tile_matrixes()
-    print TileMatrixSet(tile_grid(4326, origin='ul')).tile_matrixes()
+    print(TileMatrixSet(tile_grid(900913)).tile_matrixes())
+    print(TileMatrixSet(tile_grid(4326, origin='ul')).tile_matrixes())

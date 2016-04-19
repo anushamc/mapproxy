@@ -21,6 +21,8 @@ from mapproxy.request import Request
 from mapproxy.response import Response
 from mapproxy.util.collections import LRU
 from mapproxy.wsgiapp import make_wsgi_app as make_mapproxy_wsgi_app
+from mapproxy.compat import iteritems
+
 from threading import Lock
 
 import logging
@@ -45,7 +47,7 @@ def app_factory(global_options, config_dir, allow_listing=False, **local_options
     """
     return make_wsgi_app(config_dir, asbool(allow_listing))
 
-def make_wsgi_app(config_dir, allow_listing=True):
+def make_wsgi_app(config_dir, allow_listing=True, debug=False):
     """
     Create a MultiMapProxy with the given config directory.
 
@@ -55,16 +57,17 @@ def make_wsgi_app(config_dir, allow_listing=True):
     """
     config_dir = os.path.abspath(config_dir)
     loader = DirectoryConfLoader(config_dir)
-    return MultiMapProxy(loader, list_apps=allow_listing)
+    return MultiMapProxy(loader, list_apps=allow_listing, debug=debug)
 
 
 class MultiMapProxy(object):
 
-    def __init__(self, loader, list_apps=False, app_cache_size=100):
+    def __init__(self, loader, list_apps=False, app_cache_size=100, debug=False):
         self.loader = loader
         self.list_apps = list_apps
         self._app_init_lock = Lock()
         self.apps = LRU(app_cache_size)
+        self.debug = debug
 
     def __call__(self, environ, start_response):
         req = Request(environ)
@@ -104,37 +107,37 @@ class MultiMapProxy(object):
         """
         Return the (cached) project app.
         """
-        proj_app, timestamp = self.apps.get(proj_name, (None, None))
+        proj_app, timestamps = self.apps.get(proj_name, (None, None))
 
         if proj_app:
-            if self.loader.needs_reload(proj_name, timestamp):
+            if self.loader.needs_reload(proj_name, timestamps):
                 # discard cached app
                 proj_app = None
 
         if not proj_app:
             with self._app_init_lock:
-                proj_app, timestamp = self.apps.get(proj_name, (None, None))
-                if self.loader.needs_reload(proj_name, timestamp):
-                    proj_app, m_time = self.create_app(proj_name)
-                    self.apps[proj_name] = proj_app, m_time
+                proj_app, timestamps = self.apps.get(proj_name, (None, None))
+                if self.loader.needs_reload(proj_name, timestamps):
+                    proj_app, timestamps = self.create_app(proj_name)
+                    self.apps[proj_name] = proj_app, timestamps
                 else:
-                    proj_app, timestamp = self.apps[proj_name]
+                    proj_app, timestamps = self.apps[proj_name]
 
         return proj_app
 
     def create_app(self, proj_name):
         """
-        Returns a new configured MapProxy app and the timestamp of the configuration.
+        Returns a new configured MapProxy app and a dict with the
+        timestamps of all configuration files.
         """
         mapproxy_conf = self.loader.app_conf(proj_name)['mapproxy_conf']
-        m_time = os.path.getmtime(mapproxy_conf)
         log.info('initializing project app %s with %s', proj_name, mapproxy_conf)
-        app = make_mapproxy_wsgi_app(mapproxy_conf)
-        return app, m_time
+        app = make_mapproxy_wsgi_app(mapproxy_conf, debug=self.debug)
+        return app, app.config_files
 
 
 class ConfLoader(object):
-    def needs_reload(self, app_name, timestamp):
+    def needs_reload(self, app_name, timestamps):
         """
         Returns ``True`` if the configuration of `app_name` changed
         since `timestamp`.
@@ -172,11 +175,13 @@ class DirectoryConfLoader(ConfLoader):
         self.base_dir = base_dir
         self.suffix = suffix
 
-    def needs_reload(self, app_name, timestamp):
-        conf_file = self.filename_from_app_name(app_name)
-        m_time = os.path.getmtime(conf_file)
-        if m_time > timestamp:
+    def needs_reload(self, app_name, timestamps):
+        if not timestamps:
             return True
+        for conf_file, timestamp in iteritems(timestamps):
+            m_time = os.path.getmtime(conf_file)
+            if m_time > timestamp:
+                return True
         return False
 
     def _is_conf_file(self, fname):
@@ -209,6 +214,7 @@ class DirectoryConfLoader(ConfLoader):
             if self._is_conf_file(os.path.join(self.base_dir, f)):
                 app_name = self.app_name_from_filename(f)
                 apps.append(app_name)
+        apps.sort()
         return apps
 
     def app_available(self, app_name):

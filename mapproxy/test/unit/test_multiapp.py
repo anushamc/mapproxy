@@ -32,7 +32,7 @@ class TestDirectoryConfLoader(object):
 
     def make_conf_file(self, name):
         conf_file_name = os.path.join(self.dir, name)
-        with open(conf_file_name, 'w'):
+        with open(conf_file_name, 'wb'):
             pass
         return conf_file_name
 
@@ -68,10 +68,12 @@ class TestDirectoryConfLoader(object):
     def test_needs_reload(self):
         foo_conf_file = self.make_conf_file('foo.yaml')
         mtime = os.path.getmtime(foo_conf_file)
+        timestamps = {foo_conf_file: mtime}
         loader = DirectoryConfLoader(self.dir)
-        assert loader.needs_reload('foo', mtime) == False
+        assert loader.needs_reload('foo', timestamps) == False
 
-        assert loader.needs_reload('foo', mtime-10) == True
+        timestamps[foo_conf_file] -= 10
+        assert loader.needs_reload('foo', timestamps) == True
 
     def test_custom_suffix(self):
         self.make_conf_file('foo.conf')
@@ -79,7 +81,7 @@ class TestDirectoryConfLoader(object):
         assert loader.app_available('foo')
 
 
-minimal_mapproxy_conf = """
+minimal_mapproxy_conf = b"""
 services:
   wms:
 
@@ -109,7 +111,7 @@ class TestMultiMapProxy(object):
 
     def make_conf_file(self, name):
         app_conf_file_name = os.path.join(self.dir, name)
-        with open(app_conf_file_name, 'w') as f:
+        with open(app_conf_file_name, 'wb') as f:
             f.write(minimal_mapproxy_conf)
         return app_conf_file_name
 

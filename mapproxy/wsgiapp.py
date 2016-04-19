@@ -16,13 +16,15 @@
 """
 The WSGI application.
 """
-from __future__ import with_statement
+from __future__ import print_function
 import re
 import os
 import sys
 import time
 import threading
+import warnings
 
+from mapproxy.compat import iteritems
 from mapproxy.request import Request
 from mapproxy.response import Response
 from mapproxy.config import local_base_config
@@ -72,7 +74,7 @@ def init_logging_system(log_conf, base_dir):
         pass
     if log_conf:
         if not os.path.exists(log_conf):
-            print >>sys.stderr, 'ERROR: log configuration %s not found.' % log_conf
+            print('ERROR: log configuration %s not found.' % log_conf, file=sys.stderr)
             return
         logging.config.fileConfig(log_conf, dict(here=base_dir))
 
@@ -90,6 +92,10 @@ def make_wsgi_app(services_conf=None, debug=False, ignore_config_warnings=True, 
     :param services_conf: the file name of the mapproxy.yaml configuration
     :param reloader: reload mapproxy.yaml when it changed
     """
+
+    if sys.version_info[0] == 2 and sys.version_info[1] == 5:
+        warnings.warn('Support for Python 2.5 is deprecated since 1.7.0 and will be dropped with 1.8.0', FutureWarning)
+
     if reloader:
         make_app = lambda: make_wsgi_app(services_conf=services_conf, debug=debug,
             reloader=False)
@@ -98,13 +104,17 @@ def make_wsgi_app(services_conf=None, debug=False, ignore_config_warnings=True, 
     try:
         conf = load_configuration(mapproxy_conf=services_conf, ignore_warnings=ignore_config_warnings)
         services = conf.configured_services()
-    except ConfigurationError, e:
+    except ConfigurationError as e:
         log.fatal(e)
         raise
+
+    config_files = conf.config_files()
 
     app = MapProxyApp(services, conf.base_config)
     if debug:
         app = wrap_wsgi_debug(app, conf)
+
+    app.config_files = config_files
     return app
 
 class ReloaderApp(object):
@@ -112,13 +122,19 @@ class ReloaderApp(object):
         self.timestamp_file = timestamp_file
         self.make_app_func = make_app_func
         self.app = make_app_func()
-        self.last_reload = os.path.getmtime(self.timestamp_file)
         self._app_init_lock = threading.Lock()
 
+    def _needs_reload(self):
+        for conf_file, timestamp in iteritems(self.app.config_files):
+            m_time = os.path.getmtime(conf_file)
+            if m_time > timestamp:
+                return True
+        return False
+
     def __call__(self, environ, start_response):
-        if self.last_reload < os.path.getmtime(self.timestamp_file):
+        if self._needs_reload():
             with self._app_init_lock:
-                if self.last_reload < os.path.getmtime(self.timestamp_file):
+                if self._needs_reload():
                     try:
                         self.app = self.make_app_func()
                     except ConfigurationError:
@@ -137,7 +153,7 @@ def wrap_wsgi_debug(app, conf):
             from paste.evalexception.middleware import EvalException
             app = EvalException(app)
         except ImportError:
-            print 'Error: Install Werkzeug or Paste for browser-based debugging.'
+            print('Error: Install Werkzeug or Paste for browser-based debugging.')
 
     return app
 
@@ -149,6 +165,7 @@ class MapProxyApp(object):
     def __init__(self, services, base_config):
         self.handlers = {}
         self.base_config = base_config
+        self.cors_origin = base_config.http.access_control_allow_origin
         for service in services:
             for name in service.names:
                 self.handlers[name] = service
@@ -157,6 +174,12 @@ class MapProxyApp(object):
         resp = None
         req = Request(environ)
 
+        if self.cors_origin:
+            orig_start_response = start_response
+            def start_response(status, headers, exc_info=None):
+                headers.append(('Access-control-allow-origin', self.cors_origin))
+                return orig_start_response(status, headers, exc_info)
+
         with local_base_config(self.base_config):
             match = self.handler_path_re.match(req.path)
             if match:
@@ -164,11 +187,11 @@ class MapProxyApp(object):
                 if handler_name in self.handlers:
                     try:
                         resp = self.handlers[handler_name].handle(req)
-                    except Exception, ex:
+                    except Exception:
                         if self.base_config.debug_mode:
                             raise
                         else:
-                            log_wsgiapp.fatal('fatal error in %s for %s %s',
+                            log_wsgiapp.fatal('fatal error in %s for %s?%s',
                                 handler_name, environ.get('PATH_INFO'), environ.get('QUERY_STRING'), exc_info=True)
                             import traceback
                             traceback.print_exc(file=environ['wsgi.errors'])

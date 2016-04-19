@@ -17,22 +17,24 @@ from __future__ import with_statement
 
 import os
 import shutil
+import threading
 import tempfile
 import time
+import sqlite3
 
-from cStringIO import StringIO
+from io import BytesIO
 
 from PIL import Image
 
 from mapproxy.cache.tile import Tile
 from mapproxy.cache.file import FileCache
-from mapproxy.cache.mbtiles import MBTilesCache
+from mapproxy.cache.mbtiles import MBTilesCache, MBTilesLevelCache
+from mapproxy.cache.base import CacheBackendError
 from mapproxy.image import ImageSource
 from mapproxy.image.opts import ImageOptions
-from mapproxy.cache.mbtiles import MBTilesLevelCache
 from mapproxy.test.image import create_tmp_image_buf, is_png
 
-from nose.tools import eq_
+from nose.tools import eq_, assert_raises
 
 tile_image = create_tmp_image_buf((256, 256), color='blue')
 tile_image2 = create_tmp_image_buf((256, 256), color='red')
@@ -170,7 +172,7 @@ class TileCacheTestBase(object):
         # tile object is marked as stored,
         # check that is is not stored 'again'
         # (used for disable_storage)
-        tile = Tile((0, 0, 4), ImageSource(StringIO('foo')))
+        tile = Tile((0, 0, 4), ImageSource(BytesIO(b'foo')))
         tile.stored = True
         self.cache.store_tile(tile)
 
@@ -243,14 +245,45 @@ class TestFileTileCache(TileCacheTestBase):
 
     def create_cached_tile(self, tile):
         loc = self.cache.tile_location(tile, create_dir=True)
-        with open(loc, 'w') as f:
-            f.write('foo')
+        with open(loc, 'wb') as f:
+            f.write(b'foo')
 
 
 class TestMBTileCache(TileCacheTestBase):
     def setup(self):
         TileCacheTestBase.setup(self)
         self.cache = MBTilesCache(os.path.join(self.cache_dir, 'tmp.mbtiles'))
+
+    def test_load_empty_tileset(self):
+        assert self.cache.load_tiles([Tile(None)]) == True
+        assert self.cache.load_tiles([Tile(None), Tile(None), Tile(None)]) == True
+
+    def test_load_1001_tiles(self):
+        assert_raises(CacheBackendError, self.cache.load_tiles, [Tile((19, 1, 1))] * 1001)
+
+    def test_timeouts(self):
+        self.cache._db_conn_cache.db = sqlite3.connect(self.cache.mbtile_file, timeout=0.05)
+
+        def block():
+            # block database by delaying the commit
+            db = sqlite3.connect(self.cache.mbtile_file)
+            cur = db.cursor()
+            stmt = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?,?,?,?)"
+            cur.execute(stmt, (3, 1, 1, '1234'))
+            time.sleep(0.2)
+            db.commit()
+
+        try:
+            assert self.cache.store_tile(self.create_tile((0, 0, 1))) == True
+
+            t = threading.Thread(target=block)
+            t.start()
+            time.sleep(0.05)
+            assert self.cache.store_tile(self.create_tile((0, 0, 1))) == False
+        finally:
+            t.join()
+
+        assert self.cache.store_tile(self.create_tile((0, 0, 1))) == True
 
 
 class TestQuadkeyFileTileCache(TileCacheTestBase):

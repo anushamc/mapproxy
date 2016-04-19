@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?xml version="1.0"?>
 <!DOCTYPE WMT_MS_Capabilities SYSTEM "http://schemas.opengis.net/wms/1.1.1/WMS_MS_Capabilities.dtd"
  [
  {{if tile_layers}}
@@ -18,7 +18,11 @@
   <Name>OGC:WMS</Name>
   <Title>{{service.title}}</Title>
   <Abstract>{{service.abstract}}</Abstract>
+{{if service.online_resource}}
   <OnlineResource xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{{service.online_resource}}"/>
+{{else}}
+  <OnlineResource xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{{service.url}}"/>
+{{endif}}
 {{if service.contact}}
 {{py:service.contact = bunch(default='', **service.contact)}}
   <ContactInformation>
@@ -96,8 +100,8 @@
   <VendorSpecificCapabilities>
 {{for layer in tile_layers}}
     <TileSet>
-      <SRS>{{layer.grid.srs_name}}</SRS>
-      <BoundingBox SRS="{{layer.grid.srs_name}}" minx="{{ layer.extent.bbox[0] }}" miny="{{ layer.extent.bbox[1] }}" maxx="{{ layer.extent.bbox[2] }}" maxy="{{ layer.extent.bbox[3] }}" />
+      <SRS>{{layer.grid.srs.srs_code}}</SRS>
+      <BoundingBox SRS="{{layer.grid.srs.srs_code}}" minx="{{ layer.extent.bbox[0] }}" miny="{{ layer.extent.bbox[1] }}" maxx="{{ layer.extent.bbox[2] }}" maxy="{{ layer.extent.bbox[3] }}" />
       <Resolutions>{{for level, res in layer.grid.tile_sets}}{{res}} {{endfor}}</Resolutions>
       <Width>{{layer.grid.tile_size[0]}}</Width>
       <Height>{{layer.grid.tile_size[1]}}</Height>
@@ -115,6 +119,9 @@
     <Name>{{ layer.name }}</Name>
     {{endif}}
     <Title>{{ layer.title }}</Title>
+    {{if layer.md and 'abstract' in layer.md}}
+    <Abstract>{{ layer.md['abstract'] }}</Abstract>
+    {{endif}}
     {{if with_srs}}
     {{for s in srs}}
     <SRS>{{s}}</SRS>
@@ -139,7 +146,7 @@
           {{endif}}
       {{endfor}}
     {{endif}}
-    {{if layer.is_active and layer.has_legend}}
+    {{if layer.is_active and layer.has_legend and layer.legend_url}}
     <Style>
         <Name>default</Name>
         <Title>default</Title>

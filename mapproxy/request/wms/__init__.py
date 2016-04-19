@@ -1,12 +1,12 @@
 # This file is part of the MapProxy project.
 # Copyright (C) 2010 Omniscale <http://omniscale.de>
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #    http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -22,6 +22,7 @@ from mapproxy.request.wms import exception
 from mapproxy.exception import RequestError
 from mapproxy.srs import SRS, make_lin_transf
 from mapproxy.request.base import RequestParams, BaseRequest, split_mime_type
+from mapproxy.compat import string_type, iteritems
 
 import logging
 log = logging.getLogger(__name__)
@@ -29,11 +30,11 @@ log = logging.getLogger(__name__)
 class WMSMapRequestParams(RequestParams):
     """
     This class represents key-value parameters for WMS map requests.
-    
+
     All values can be accessed as a property.
     Some properties return processed values. ``size`` returns a tuple of the width
-    and height, ``layers`` returns an iterator of all layers, etc. 
-    
+    and height, ``layers`` returns an iterator of all layers, etc.
+
     """
     def _get_layers(self):
         """
@@ -47,7 +48,7 @@ class WMSMapRequestParams(RequestParams):
     layers = property(_get_layers, _set_layers)
     del _get_layers
     del _set_layers
-    
+
     def _get_bbox(self):
         """
         ``bbox`` as a tuple (minx, miny, maxx, maxy).
@@ -55,15 +56,16 @@ class WMSMapRequestParams(RequestParams):
         if 'bbox' not in self.params or self.params['bbox'] is None:
             return None
         points = map(float, self.params['bbox'].split(','))
-        return tuple(points[:4])
+        return tuple(points)
+
     def _set_bbox(self, value):
-        if value is not None and not isinstance(value, basestring):
+        if value is not None and not isinstance(value, string_type):
             value = ','.join(str(x) for x in value)
         self['bbox'] = value
     bbox = property(_get_bbox, _set_bbox)
     del _get_bbox
     del _set_bbox
-    
+
     def _get_size(self):
         """
         Size of the request in pixel as a tuple (width, height),
@@ -80,7 +82,7 @@ class WMSMapRequestParams(RequestParams):
     size = property(_get_size, _set_size)
     del _get_size
     del _set_size
-    
+
     def _get_srs(self):
         return self.params.get('srs', None)
     def _set_srs(self, srs):
@@ -88,7 +90,7 @@ class WMSMapRequestParams(RequestParams):
             self.params['srs'] = srs.srs_code
         else:
             self.params['srs'] = srs
-    
+
     srs = property(_get_srs, _set_srs)
     del _get_srs
     del _set_srs
@@ -113,27 +115,27 @@ class WMSMapRequestParams(RequestParams):
         """
         color = self.get('bgcolor', '0xffffff')
         return '#'+color[2:]
-    
+
     def _get_format(self):
         """
         The requested format as string (w/o any 'image/', 'text/', etc prefixes)
         """
         _mime_class, format, options = split_mime_type(self.get('format', default=''))
         return format
-    
+
     def _set_format(self, format):
         if '/' not in format:
             format = 'image/' + format
         self['format'] = format
-    
+
     format = property(_get_format, _set_format)
     del _get_format
     del _set_format
-    
+
     @property
     def format_mime_type(self):
         return self.get('format')
-    
+
     def __repr__(self):
         return '%s(param=%r)' % (self.__class__.__name__, self.params)
 
@@ -146,23 +148,23 @@ class WMSRequest(BaseRequest):
     non_strict_params = set()
     #pylint: disable-msg=E1102
     xml_exception_handler = None
-    
+
     def __init__(self, param=None, url='', validate=False, non_strict=False, **kw):
         self.non_strict = non_strict
         BaseRequest.__init__(self, param=param, url=url, validate=validate, **kw)
         self.adapt_to_111()
-    
+
     def adapt_to_111(self):
         pass
-    
+
     def adapt_params_to_version(self):
         params = self.params.copy()
-        for key, value in self.fixed_params.iteritems():
+        for key, value in iteritems(self.fixed_params):
             params[key] = value
         if 'styles' not in params:
             params['styles'] = ''
         return params
-    
+
     @property
     def query_string(self):
         return self.adapt_params_to_version().query_string
@@ -170,7 +172,7 @@ class WMSRequest(BaseRequest):
 class WMSMapRequest(WMSRequest):
     """
     Base class for all WMS GetMap requests.
-    
+
     :ivar requests: the ``RequestParams`` class for this request
     :ivar request_handler_name: the name of the server handler
     :ivar fixed_params: parameters that are fixed for a request
@@ -179,7 +181,7 @@ class WMSMapRequest(WMSRequest):
     request_params = WMSMapRequestParams
     request_handler_name = 'map'
     fixed_params = {'request': 'GetMap', 'service': 'WMS'}
-    expected_param = ['version', 'request', 'layers', 'styles', 'srs', 'bbox', 
+    expected_param = ['version', 'request', 'layers', 'styles', 'srs', 'bbox',
                       'width', 'height', 'format']
     #pylint: disable-msg=E1102
     xml_exception_handler = None
@@ -188,12 +190,12 @@ class WMSMapRequest(WMSRequest):
     def __init__(self, param=None, url='', validate=False, non_strict=False, **kw):
         WMSRequest.__init__(self, param=param, url=url, validate=validate,
                             non_strict=non_strict, **kw)
-    
+
     def validate(self):
         self.validate_param()
         self.validate_bbox()
         self.validate_styles()
-    
+
     def validate_param(self):
         missing_param = []
         for param in self.expected_param:
@@ -201,19 +203,19 @@ class WMSMapRequest(WMSRequest):
                 continue
             if param not in self.params:
                 missing_param.append(param)
-        
+
         if missing_param:
             if 'format' in missing_param:
                 self.params['format'] = 'image/png'
             raise RequestError('missing parameters ' + str(missing_param),
                                request=self)
-    
+
     def validate_bbox(self):
         x0, y0, x1, y1 = self.params.bbox
         if x0 >= x1 or y0 >= y1:
             raise RequestError('invalid bbox ' + self.params.get('bbox', None),
                                request=self)
-    
+
     def validate_format(self, image_formats):
         format = self.params['format']
         if format not in image_formats:
@@ -231,8 +233,8 @@ class WMSMapRequest(WMSRequest):
             if not set(styles.split(',')).issubset(set(['default', ''])):
                 raise RequestError('unsupported styles: ' + self.params['styles'],
                                    code='StyleNotDefined', request=self)
-        
-    
+
+
     @property
     def exception_handler(self):
         if self.prevent_image_exception:
@@ -243,10 +245,10 @@ class WMSMapRequest(WMSRequest):
             elif 'blank' in self.params['exceptions'].lower():
                 return exception.WMSBlankExceptionHandler()
         return self.xml_exception_handler()
-    
+
     def copy(self):
         return self.__class__(param=self.params.copy(), url=self.url)
-    
+
 
 class Version(object):
     _versions = {}
@@ -259,11 +261,17 @@ class Version(object):
         return version_obj
     def __init__(self, version):
         self.parts = tuple(int(x) for x in version.split('.'))
-    
-    def __cmp__(self, other):
+
+    def __lt__(self, other):
         if not isinstance(other, Version):
             return NotImplemented
-        return cmp(self.parts, other.parts)
+        return self.parts < other.parts
+
+    def __ge__(self, other):
+        if not isinstance(other, Version):
+            return NotImplemented
+        return self.parts >= other.parts
+
     def __repr__(self):
         return "Version('%s')" % ('.'.join(str(part) for part in self.parts),)
 
@@ -271,24 +279,42 @@ class WMS100MapRequest(WMSMapRequest):
     version = Version('1.0.0')
     xml_exception_handler = exception.WMS100ExceptionHandler
     fixed_params = {'request': 'map', 'wmtver': '1.0.0'}
-    expected_param = ['wmtver', 'request', 'layers', 'styles', 'srs', 'bbox', 
+    expected_param = ['wmtver', 'request', 'layers', 'styles', 'srs', 'bbox',
                       'width', 'height', 'format']
     def adapt_to_111(self):
         del self.params['wmtver']
         self.params['version'] = '1.0.0'
         self.params['request'] = 'GetMap'
-    
+
     def adapt_params_to_version(self):
         params = WMSMapRequest.adapt_params_to_version(self)
         del params['version']
         del params['service']
+
+        image_format = params['format']
+        if '/' in image_format:
+            params['format'] = image_format.split('/', 1)[1].upper()
         return params
+
+    def validate_format(self, image_formats):
+        format = self.params['format']
+        image_formats100 = [f.split('/', 1)[1].upper() for f in image_formats]
+
+        if format in image_formats100:
+            format = 'image/' + format.lower()
+            self.params['format'] = format
+
+        if format not in image_formats:
+            format = self.params['format']
+            self.params['format'] = 'image/png'
+            raise RequestError('unsupported image format: ' + format,
+                               code='InvalidFormat', request=self)
 
 class WMS110MapRequest(WMSMapRequest):
     version = Version('1.1.0')
     fixed_params = {'request': 'GetMap', 'version': '1.1.0', 'service': 'WMS'}
     xml_exception_handler = exception.WMS110ExceptionHandler
-    
+
     def adapt_to_111(self):
         del self.params['wmtver']
 
@@ -296,7 +322,7 @@ class WMS111MapRequest(WMSMapRequest):
     version = Version('1.1.1')
     fixed_params = {'request': 'GetMap', 'version': '1.1.1', 'service': 'WMS'}
     xml_exception_handler = exception.WMS111ExceptionHandler
-    
+
     def adapt_to_111(self):
         del self.params['wmtver']
 
@@ -308,7 +334,7 @@ def switch_bbox_epsg_axis_order(bbox, srs):
         except RuntimeError:
             log.warn('unknown SRS %s' % srs)
     return bbox
-    
+
 def _switch_bbox(self):
     self.bbox = switch_bbox_epsg_axis_order(self.bbox, self.srs)
 
@@ -324,7 +350,7 @@ class WMS130MapRequest(WMSMapRequest):
     request_params = WMS130MapRequestParams
     xml_exception_handler = exception.WMS130ExceptionHandler
     fixed_params = {'request': 'GetMap', 'version': '1.3.0', 'service': 'WMS'}
-    expected_param = ['version', 'request', 'layers', 'styles', 'crs', 'bbox', 
+    expected_param = ['version', 'request', 'layers', 'styles', 'crs', 'bbox',
                       'width', 'height', 'format']
     def adapt_to_111(self):
         del self.params['wmtver']
@@ -332,7 +358,7 @@ class WMS130MapRequest(WMSMapRequest):
             self.params['srs'] = self.params['crs']
             del self.params['crs']
         self.params.switch_bbox()
-    
+
     def adapt_params_to_version(self):
         params = WMSMapRequest.adapt_params_to_version(self)
         params.switch_bbox()
@@ -340,13 +366,13 @@ class WMS130MapRequest(WMSMapRequest):
             params['crs'] = params['srs']
             del params['srs']
         return params
-        
+
     def validate_srs(self, srs):
         # its called crs in 1.3.0 and we validate before adapt_to_111
         if self.params['srs'].upper() not in srs:
             raise RequestError('unsupported crs: ' + self.params['srs'],
                                code='InvalidCRS', request=self)
-    
+
     def copy_with_request_params(self, req):
         new_req = WMSMapRequest.copy_with_request_params(self, req)
         new_req.params.switch_bbox()
@@ -358,7 +384,7 @@ class WMSLegendGraphicRequestParams(WMSMapRequestParams):
     """
     def _set_layer(self, value):
         self.params['layer'] = value
-    
+
     def _get_layer(self):
         """
         Layer for which to produce legend graphic.
@@ -367,23 +393,23 @@ class WMSLegendGraphicRequestParams(WMSMapRequestParams):
     layer = property(_get_layer, _set_layer)
     del _set_layer
     del _get_layer
-        
+
     @property
     def sld_version(self):
         """
         Specification version for SLD-specification
         """
         return self.params.get('sld_version')
-    
-    
+
+
     def _set_scale(self, value):
         self.params['scale'] = value
-    
+
     def _get_scale(self):
         if self.params.get('scale') is not None:
             return float(self['scale'])
         return None
-    
+
     scale = property(_get_scale,_set_scale)
     del _set_scale
     del _get_scale
@@ -408,7 +434,7 @@ class WMSFeatureInfoRequestParams(WMSMapRequestParams):
     pos = property(_get_pos, _set_pos)
     del _get_pos
     del _set_pos
-    
+
     @property
     def pos_coords(self):
         """x, y query coordinates (in request SRS)"""
@@ -419,13 +445,13 @@ class WMSFeatureInfoRequestParams(WMSMapRequestParams):
 class WMS130FeatureInfoRequestParams(WMSFeatureInfoRequestParams):
     switch_bbox = _switch_bbox
 
-class WMSLegendGraphicRequest(WMSMapRequest):    
+class WMSLegendGraphicRequest(WMSMapRequest):
     request_params = WMSLegendGraphicRequestParams
     request_handler_name = 'legendgraphic'
     non_strict_params = set(['sld_version', 'scale'])
     fixed_params = {'request': 'GetLegendGraphic', 'service': 'WMS', 'sld_version': '1.1.0'}
     expected_param = ['version', 'request', 'layer', 'format', 'sld_version']
-    
+
     def validate(self):
         self.validate_param()
         self.validate_sld_version()
@@ -434,14 +460,14 @@ class WMSLegendGraphicRequest(WMSMapRequest):
         if self.params.get('sld_version', '1.1.0') != '1.1.0':
             raise RequestError('invalid sld_version ' + self.params.get('sld_version'),
                                 request=self)
-    
+
 
 class WMS111LegendGraphicRequest(WMSLegendGraphicRequest):
     version = Version('1.1.1')
     fixed_params = WMSLegendGraphicRequest.fixed_params.copy()
     fixed_params['version'] = '1.1.1'
     xml_exception_handler = exception.WMS111ExceptionHandler
-    
+
 class WMS130LegendGraphicRequest(WMSLegendGraphicRequest):
     version = Version('1.3.0')
     fixed_params = WMSLegendGraphicRequest.fixed_params.copy()
@@ -450,9 +476,9 @@ class WMS130LegendGraphicRequest(WMSLegendGraphicRequest):
 
 class WMSFeatureInfoRequest(WMSMapRequest):
     non_strict_params = set(['format', 'styles'])
-    
+
     def validate_format(self, image_formats):
-        if self.non_strict: return 
+        if self.non_strict: return
         WMSMapRequest.validate_format(self, image_formats)
 
 class WMS111FeatureInfoRequest(WMSFeatureInfoRequest):
@@ -481,10 +507,10 @@ class WMS100FeatureInfoRequest(WMSFeatureInfoRequest):
     fixed_params = WMS100MapRequest.fixed_params.copy()
     fixed_params['request'] = 'feature_info'
     expected_param = WMS100MapRequest.expected_param[:] + ['query_layers', 'x', 'y']
-    
+
     def adapt_to_111(self):
         del self.params['wmtver']
-    
+
     def adapt_params_to_version(self):
         params = WMSMapRequest.adapt_params_to_version(self)
         del params['version']
@@ -512,7 +538,7 @@ class WMS130FeatureInfoRequest(WMS130MapRequest):
             self.params['y'] = self.params['j']
         del self.params['i']
         del self.params['j']
-    
+
     def adapt_params_to_version(self):
         params = WMS130MapRequest.adapt_params_to_version(self)
         params['i'] = self.params['x']
@@ -522,7 +548,7 @@ class WMS130FeatureInfoRequest(WMS130MapRequest):
         return params
 
     def validate_format(self, image_formats):
-        if self.non_strict: return 
+        if self.non_strict: return
         WMSMapRequest.validate_format(self, image_formats)
 
 class WMSCapabilitiesRequest(WMSRequest):
@@ -532,30 +558,30 @@ class WMSCapabilitiesRequest(WMSRequest):
     fixed_params = {}
     def __init__(self, param=None, url='', validate=False, non_strict=False, **kw):
         WMSRequest.__init__(self, param=param, url=url, validate=validate, **kw)
-    
+
     def adapt_to_111(self):
         pass
-    
+
     def validate(self):
         pass
-    
+
 
 class WMS100CapabilitiesRequest(WMSCapabilitiesRequest):
     version = Version('1.0.0')
     capabilities_template = 'wms100capabilities.xml'
     fixed_params = {'request': 'capabilities', 'wmtver': '1.0.0'}
-    
+
     @property
     def exception_handler(self):
         return exception.WMS100ExceptionHandler()
-    
+
 
 class WMS110CapabilitiesRequest(WMSCapabilitiesRequest):
     version = Version('1.1.0')
     capabilities_template = 'wms110capabilities.xml'
     mime_type = 'application/vnd.ogc.wms_xml'
     fixed_params = {'request': 'GetCapabilities', 'version': '1.1.0', 'service': 'WMS'}
-    
+
     @property
     def exception_handler(self):
         return exception.WMS110ExceptionHandler()
@@ -565,21 +591,21 @@ class WMS111CapabilitiesRequest(WMSCapabilitiesRequest):
     capabilities_template = 'wms111capabilities.xml'
     mime_type = 'application/vnd.ogc.wms_xml'
     fixed_params = {'request': 'GetCapabilities', 'version': '1.1.1', 'service': 'WMS'}
-    
+
     @property
     def exception_handler(self):
         return exception.WMS111ExceptionHandler()
-    
+
 
 class WMS130CapabilitiesRequest(WMSCapabilitiesRequest):
     version = Version('1.3.0')
     capabilities_template = 'wms130capabilities.xml'
     fixed_params = {'request': 'GetCapabilities', 'version': '1.3.0', 'service': 'WMS'}
-    
+
     @property
     def exception_handler(self):
         return exception.WMS130ExceptionHandler()
-    
+
 request_mapping = {Version('1.0.0'): {'featureinfo': WMS100FeatureInfoRequest,
                                       'map': WMS100MapRequest,
                                       'capabilities': WMS100CapabilitiesRequest},
@@ -597,13 +623,13 @@ request_mapping = {Version('1.0.0'): {'featureinfo': WMS100FeatureInfoRequest,
                    }
 
 
-    
+
 def _parse_version(req):
     if 'version' in req.args:
         return Version(req.args['version'])
     if 'wmtver' in req.args:
         return Version(req.args['wmtver'])
-    
+
     return Version('1.1.1') # default
 
 def _parse_request_type(req):
@@ -621,9 +647,8 @@ def _parse_request_type(req):
             return request_type
     else:
         return None
-        
 
-def negotiate_version(version):
+def negotiate_version(version, supported_versions=None):
     """
     >>> negotiate_version(Version('0.9.0'))
     Version('1.0.0')
@@ -633,28 +658,37 @@ def negotiate_version(version):
     Version('1.1.1')
     >>> negotiate_version(Version('1.1.0'))
     Version('1.1.0')
+    >>> negotiate_version(Version('1.1.0'), [Version('1.0.0')])
+    Version('1.0.0')
+    >>> negotiate_version(Version('1.3.0'), sorted([Version('1.1.0'), Version('1.1.1')]))
+    Version('1.1.1')
     """
-    supported_versions = request_mapping.keys()
-    supported_versions.sort()
-    
+    if not supported_versions:
+        supported_versions = list(request_mapping.keys())
+        supported_versions.sort()
+
     if version < supported_versions[0]:
         return supported_versions[0] # smallest version we support
-    
+
     if version > supported_versions[-1]:
         return supported_versions[-1] # highest version we support
-    
+
     while True:
         next_highest_version = supported_versions.pop()
         if version >= next_highest_version:
             return next_highest_version
 
-def wms_request(req, validate=True, strict=True):
+def wms_request(req, validate=True, strict=True, versions=None):
     version = _parse_version(req)
     req_type = _parse_request_type(req)
-    
-    version_requests = request_mapping.get(version, None)
+
+    if versions and version not in versions:
+        version_requests = None
+    else:
+        version_requests = request_mapping.get(version, None)
+
     if version_requests is None:
-        negotiated_version = negotiate_version(version)
+        negotiated_version = negotiate_version(version, supported_versions=versions)
         version_requests = request_mapping[negotiated_version]
     req_class = version_requests.get(req_type, None)
     if req_class is None:
@@ -674,22 +708,22 @@ def create_request(req_data, param, req_type='map', version='1.1.1', abspath=Non
         req_data['format'] = param['request_format']
     elif 'format' in param:
         req_data['format'] = param['format']
-    
+
     if 'info_format' in param:
         req_data['info_format'] = param['info_format']
-    
+
     if 'transparent' in req_data:
         # we don't want a boolean
         req_data['transparent'] = str(req_data['transparent'])
-    
+
     if req_data.get('sld', '').startswith('file://'):
         sld_path = req_data['sld'][len('file://'):]
         if abspath:
             sld_path = abspath(sld_path)
-        with codecs.open(sld_path, 'UTF-8') as f:
+        with codecs.open(sld_path, 'r', 'utf-8') as f:
             req_data['sld_body'] = f.read()
         del req_data['sld']
-    
+
     return request_mapping[Version(version)][req_type](url=url, param=req_data)
 
 
@@ -721,4 +755,4 @@ def mimetype_from_infotype(version, info_type):
     for t, m in formats:
         if t == info_type: return m
     return 'text/plain'
-    
+

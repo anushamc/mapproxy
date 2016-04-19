@@ -20,6 +20,8 @@ import codecs
 from functools import partial
 from contextlib import closing
 
+from mapproxy.compat import string_type
+
 import logging
 log_config = logging.getLogger('mapproxy.config.coverage')
 
@@ -28,9 +30,19 @@ try:
     import shapely.geometry
     import shapely.ops
     import shapely.prepared
+    from shapely.geos import ReadingError
     geom_support = True
 except ImportError:
     geom_support = False
+
+class GeometryError(Exception):
+    pass
+
+class EmptyGeometryError(Exception):
+    pass
+
+class CoverageReadError(Exception):
+    pass
 
 def require_geom_support():
     if not geom_support:
@@ -59,20 +71,26 @@ def load_ogr_datasource(datasource, where=None):
 
     Returns a list of Shapely Polygons.
     """
-    from mapproxy.util.ogr import OGRShapeReader
+    from mapproxy.util.ogr import OGRShapeReader, OGRShapeReaderError
 
     polygons = []
-    with closing(OGRShapeReader(datasource)) as reader:
-        for wkt in reader.wkts(where):
-            geom = shapely.wkt.loads(wkt)
-            if geom.type == 'Polygon':
-                polygons.append(geom)
-            elif geom.type == 'MultiPolygon':
-                for p in geom:
-                    polygons.append(p)
-            else:
-                log_config.warn('skipping %s geometry from %s: not a Polygon/MultiPolygon',
-                    geom.type, datasource)
+    try:
+        with closing(OGRShapeReader(datasource)) as reader:
+            for wkt in reader.wkts(where):
+                try:
+                    geom = shapely.wkt.loads(wkt)
+                except ReadingError as ex:
+                    raise GeometryError(ex)
+                if geom.type == 'Polygon':
+                    polygons.append(geom)
+                elif geom.type == 'MultiPolygon':
+                    for p in geom:
+                        polygons.append(p)
+                else:
+                    log_config.warn('skipping %s geometry from %s: not a Polygon/MultiPolygon',
+                        geom.type, datasource)
+    except OGRShapeReaderError as ex:
+        raise CoverageReadError(ex)
 
     return polygons
 
@@ -83,7 +101,7 @@ def load_polygons(geom_files):
     Returns a list of Shapely Polygons.
     """
     polygons = []
-    if isinstance(geom_files, basestring):
+    if isinstance(geom_files, string_type):
         geom_files = [geom_files]
 
     for geom_file in geom_files:
@@ -111,16 +129,30 @@ def load_polygon_lines(line_iter, source='<string>'):
     return polygons
 
 def build_multipolygon(polygons, simplify=False):
-    if polygons:
-        mp = shapely.geometry.MultiPolygon(polygons)
+    if not polygons:
+        p = shapely.geometry.Polygon()
+        return p.bounds, p
+
+    if len(polygons) == 1:
+        geom = polygons[0]
         if simplify:
-            mp = simplify_geom(mp)
-    else:
-        mp = shapely.geometry.Polygon()
+            geom = simplify_geom(geom)
+        return geom.bounds, geom
+
+    mp = shapely.geometry.MultiPolygon(polygons)
+
+    if simplify:
+        mp = simplify_geom(mp)
+
+    # eliminate any self-intersections
+    mp = shapely.ops.cascaded_union(mp)
+
     return mp.bounds, mp
 
 def simplify_geom(geom):
     bounds = geom.bounds
+    if not bounds:
+        raise EmptyGeometryError('Empty geometry given')
     w, h = bounds[2] - bounds[0], bounds[3] - bounds[1]
     tolerance = min((w/1e6, h/1e6))
     return geom.simplify(tolerance, preserve_topology=True)
@@ -159,7 +191,7 @@ def transform_multipolygon(transf, multipolygon):
     return shapely.geometry.MultiPolygon(transformed_polygons)
 
 def transform_xy(from_srs, to_srs, xy):
-    return list(from_srs.transform_to(to_srs, zip(*xy)))
+    return list(from_srs.transform_to(to_srs, list(zip(*xy))))
 
 def flatten_to_polygons(geometry):
     """

@@ -75,7 +75,7 @@ class RenderdTileCreator(TileCreator):
         log_request(address, 200, None, duration=duration, method='RENDERD')
 
     def _send_tile_request(self, cache_identifier, tile_coords):
-        identifier = hashlib.sha1(str((cache_identifier, tile_coords))).hexdigest()
+        identifier = hashlib.sha1(str((cache_identifier, tile_coords)).encode('ascii')).hexdigest()
         message = {
             'command': 'tile',
             'id': identifier,
@@ -83,5 +83,10 @@ class RenderdTileCreator(TileCreator):
             'cache_identifier': cache_identifier,
             'priority': self.priority
         }
-        resp = requests.post(self.renderd_address, data=json.dumps(message))
-        return resp.json()
+        try:
+            resp = requests.post(self.renderd_address, data=json.dumps(message))
+            return resp.json()
+        except ValueError:
+            raise SourceError("Error while communicating with renderd: invalid JSON")
+        except requests.RequestException as ex:
+            raise SourceError("Error while communicating with renderd: %s" % ex)

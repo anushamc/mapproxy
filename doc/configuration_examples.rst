@@ -130,7 +130,7 @@ Example configuration for an OpenStreetMap tile service::
   sources:
     my_tile_source:
       type: tile
-      grid: tile_grid_of_source
+      grid: GLOBAL_WEBMERCATOR
       url: http://a.tile.openstreetmap.org/%(z)s/%(x)s/%(y)s.png
 
  grids:
@@ -725,24 +725,15 @@ You can use the ``no_proxy`` environment variable if you need to bypass the prox
 Serve multiple MapProxy instances
 =================================
 
-Since 0.9.1 it is possible to load multiple MapProxy instances into a single process. Each MapProxy can have a different global configuration and different services and caches. [#f1]_ You can use `Paste's urlmap <http://pythonpaste.org/deploy/#composite-applications>`_ to load multiple MapProxy configurations. If you have multiple MapProxy configurations and what to load them dynamically, then you can also use :ref:`MultiMapProxy`.
+It is possible to load multiple MapProxy instances into a single process. Each MapProxy can have a different global configuration and different services and caches. [#f1]_  You can use :ref:`MultiMapProxy` to load multiple MapProxy configurations on-demand.
 
-Example ``config.ini``::
+Example ``config.py``::
 
-  [composite:main]
-  use = egg:Paste#urlmap
-  /proxy1 = proxy1
-  /proxy2 = proxy2
+    from mapproxy.multiapp import make_wsgi_app
+    application = make_wsgi_app('/path/to/projects', allow_listing=True)
 
-  [app:proxy1]
-  use = egg:MapProxy#app
-  mapproxy_conf = %(here)s/proxy1.yaml
 
-  [app:proxy2]
-  use = egg:MapProxy#app
-  mapproxy_conf = %(here)s/proxy2.yaml
-
-MapProxy is then available at ``/proxy1`` and ``/proxy2``.
+The MapProxy configuration from ``/path/to/projects/app.yaml`` is then available at ``/app``.
 
 You can reuse parts of the MapProxy configuration with the `base` option. You can put all common options into a single base configuration and reference that file in the actual configuration::
 
@@ -775,3 +766,66 @@ Example part of ``mapproxy.yaml`` to generate a quadkey cache::
       base: GLOBAL_MERCATOR
       origin: nw
 
+
+.. _hq_tiles:
+
+HQ/Retina tiles
+===============
+
+MapProxy has no native support for delivering high-resolution tiles, but you can create a second tile layer with HQ tiles, if your source supports rendering with different scale-factor or DPI.
+
+At first you need two grids. One regular grid and one with half the resolution but twice the tile size. The following example configures two webmercator compatible grids::
+
+  grids:
+    webmercator:
+      srs: "EPSG:3857"
+      origin: nw
+      min_res: 156543.03392804097
+    webmercator_hq:
+      srs: "EPSG:3857"
+      origin: nw
+      min_res: 78271.51696402048
+      tile_size: [512, 512]
+
+Then you need two layers and two caches::
+
+  layers:
+    - name: map
+      title: Regular map
+      sources: [map_cache]
+    - name: map_hq
+      title: HQ map
+      sources: [map_hq_cache]
+
+  caches:
+    map_cache:
+      grids: [webmercator]
+      sources: [map_source]
+    map_hq_cache:
+      grids: [webmercator_hq]
+      sources: [map_hq_source]
+
+And finally two sources. The source for the HQ tiles needs to render images with a higher scale/DPI setting. The ``mapnik`` source supports this with the ``scale_factor`` option. MapServer for example supports a ``map_resolution`` request parameter.
+
+::
+
+  sources:
+    map_source:
+      type: mapnik
+      mapfile: ./mapnik.xml
+      transparent: true
+
+    map_hq_source:
+      type: mapnik
+      mapfile: ./mapnik.xml
+      transparent: true
+      scale_factor: 2
+
+
+With that configuration ``/wmts/mapnik/webmercator/0/0/0.png`` returns a regular webmercator tile:
+
+.. image:: imgs/mapnik-webmerc.png
+
+``/wmts/mapnik_hq/webmercator_hq/0/0/0.png`` returns the same tile with 512x512 pixel:
+
+.. image:: imgs/mapnik-webmerc-hq.png

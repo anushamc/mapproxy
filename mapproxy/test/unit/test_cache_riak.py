@@ -22,6 +22,7 @@ from nose.plugins.skip import SkipTest
 
 from mapproxy.cache.riak import RiakCache
 from mapproxy.grid import tile_grid
+from mapproxy.compat.modules import urlparse
 from mapproxy.test.image import create_tmp_image_buf
 from mapproxy.test.unit.test_cache_tile import TileCacheTestBase
 
@@ -34,12 +35,21 @@ class RiakCacheTestBase(TileCacheTestBase):
         if not os.environ.get(self.riak_url_env):
             raise SkipTest()
 
-        riak_url = os.environ[self.riak_url_env]
+        url = os.environ[self.riak_url_env]
+        urlparts = urlparse.urlparse(url)
+        protocol = urlparts.scheme.lower()
+        node = {'host': urlparts.hostname}
+        if ':' in urlparts.hostname:
+            if protocol == 'pbc':
+                node['pb_port'] = urlparts.port
+            if protocol in ('http', 'https'):
+                node['http_port'] = urlparts.port
+
         db_name = 'mapproxy_test_%d' % random.randint(0, 100000)
 
         TileCacheTestBase.setup(self)
 
-        self.cache = RiakCache(riak_url, db_name, 'riak', tile_grid=tile_grid(3857, name='global-webmarcator'),
+        self.cache = RiakCache([node], protocol, db_name, tile_grid=tile_grid(3857, name='global-webmarcator'),
                 lock_dir=self.cache_dir)
 
     def teardown(self):
